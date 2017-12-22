@@ -83,20 +83,21 @@ class FirstOrderHMM:
                 for prev_stat in self.states:
                     if viterbi_prob[i-1][prev_stat]["prob"] *\
                             self.tran_prob[prev_stat][stat] == prev_max_prob:
-                        viterbi_prob[i][stat]["prob"] = \
-                            prev_max_prob * self.emi_prob[stat][obs[i]]
-                        viterbi_prob[i][stat]["prev"] = prev_stat
+                        viterbi_prob[i][stat] = {
+                            "prob": prev_max_prob * self.emi_prob[stat][obs[i]],
+                            "prev": prev_stat
+                        }
                         break
         max_prob = -1
         opt_stat = None
         if has_stop:
-            for stat, info in viterbi_prob[-1]:
+            for stat, info in viterbi_prob[-1].items():
                 last_prob = info["prob"] * self.tran_prob[stat]["end"]
                 if last_prob > max_prob:
                     max_prob = last_prob
                     opt_stat = stat
         else:
-            for stat, info in viterbi_prob[-1]:
+            for stat, info in viterbi_prob[-1].items():
                 if info["prob"] > max_prob:
                     max_prob = info["prob"]
                     opt_stat = stat
