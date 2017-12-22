@@ -1,0 +1,17 @@
+__pycache__
+*.[oa]
+.idea
+*.csv
+*.data
+*.xls
+*.xlsx
+*.txt
+bak
+stf_model
+*.db
+*.log*
+#*.gz
+#*.jar
+#*.propert*
+#*.ser
+#*.tsv
