@@ -21,3 +21,16 @@ emission_probability = {
     'Fever': {'normal': 0.1, 'cold': 0.3, 'dizzy': 0.6},
 }
 
+
+if __name__ == "__main__":
+    from hmm.HMM import FirstOrderHMM
+    hmm_model = FirstOrderHMM()
+    hmm_model.load_hmm(
+        tran_prob=transition_probability,
+        emi_prob=emission_probability,
+        start_prob=start_probability
+    )
+    print(
+        hmm_model.viterbi_step(obs=observations)
+    )
+
