@@ -31,18 +31,35 @@ class FirstOrderHMM:
         self.tran_prob = dict()
         self.emi_prob = dict()
         self.start_prob = dict()
-        self.states = None
+        self.stop_prob = dict()
+        self.states = list()
+        self.forward = dict()
+        self.backward = dict()
 
     def load_hmm(self,
                  tran_prob,
                  emi_prob,
-                 start_prob):
+                 start_prob=None,
+                 stop_prob=None):
         self.tran_prob = tran_prob
         self.emi_prob = emi_prob
-        self.start_prob = start_prob
-        self.states = set(start_prob.keys())
+        self.states = set(tran_prob.keys())
+        if not start_prob:
+            n_states = len(self.states)
+            self.start_prob = dict(
+                zip(self.states, [1/n_states]*n_states)
+            )
+        else:
+            self.start_prob = start_prob
+        if not stop_prob:
+            n_states = len(self.states)
+            self.stop_prob = dict(
+                zip(self.states, [1/n_states]*n_states)
+            )
+        else:
+            self.stop_prob = stop_prob
 
-    def forward_step(self, obs, has_stop=False):
+    def forward_step(self, obs):
         if not self._has_model():
             raise Exception("No hmm model!")
         forward_prob = [{}]
@@ -57,14 +74,13 @@ class FirstOrderHMM:
                     self.tran_prob[prev_s][stat] *
                     self.emi_prob[stat][obs[i]]
                     for prev_s in self.states)
-        if has_stop:
-            return sum(
-                forward_prob[-1][stat] * self.tran_prob[stat]["stop"]
-                for stat in self.states
-            )
+        forward_prob.append({})
+        for stat in self.states:
+            forward_prob[-1][stat] = forward_prob[-2][stat] * self.stop_prob[stat]
+        self.forward = forward_prob
         return sum(forward_prob[-1].values())
 
-    def viterbi_step(self, obs, has_stop=False):
+    def viterbi_step(self, obs):
         if not self._has_model():
             raise Exception("No hmm model!")
         optimal_seq = []
@@ -90,17 +106,12 @@ class FirstOrderHMM:
                         break
         max_prob = -1
         opt_stat = None
-        if has_stop:
-            for stat, info in viterbi_prob[-1].items():
-                last_prob = info["prob"] * self.tran_prob[stat]["end"]
-                if last_prob > max_prob:
-                    max_prob = last_prob
-                    opt_stat = stat
-        else:
-            for stat, info in viterbi_prob[-1].items():
-                if info["prob"] > max_prob:
-                    max_prob = info["prob"]
-                    opt_stat = stat
+        for stat, info in viterbi_prob[-1].items():
+            last_prob = info["prob"] * self.stop_prob[stat]
+            if last_prob > max_prob:
+                max_prob = last_prob
+                opt_stat = stat
+
         optimal_seq.append(opt_stat)
 
         for ind in range(len(obs)-2, -1, -1):
@@ -111,10 +122,28 @@ class FirstOrderHMM:
             opt_stat = viterbi_prob[ind+1][opt_stat]["prev"]
         return optimal_seq
 
+    def backward_step(self, obs):
+        if not self._has_model():
+            raise Exception("No hmm model!")
+        backward_prob = [{}]
+        for stat in self.states:
+            backward_prob[0][stat] = self.stop_prob[stat]
+        for i in range(1, len(obs)):
+            backward_prob.append({})
+            for stat in self.states:
+                backward_prob[i][stat] = sum(
+                    backward_prob[i-1][back_s] *
+                    self.tran_prob[stat][back_s] *
+                    self.emi_prob[back_s][obs[-i]]
+                    for back_s in self.states)
+        backward_prob.append({})
+        for stat in self.states:
+            backward_prob[-1][stat] = self.start_prob[stat] * self.emi_prob[stat][obs[0]]
+        self.backward = backward_prob
+        return sum(backward_prob[-1].values())
+
     def _has_model(self):
-        if not self.tran_prob \
-                or not self.emi_prob \
-                or not self.start_prob:
+        if not self.tran_prob and not self.emi_prob:
             return False
         return True
 

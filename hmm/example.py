@@ -33,4 +33,6 @@ if __name__ == "__main__":
     print(
         hmm_model.viterbi_step(obs=observations)
     )
+    print(hmm_model.forward_step(obs=observations))
+    print(hmm_model.backward_step(obs=observations))
 
