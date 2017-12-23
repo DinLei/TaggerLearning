@@ -33,8 +33,6 @@ class FirstOrderHMM:
         self.start_prob = dict()
         self.stop_prob = dict()
         self.states = list()
-        self.forward = dict()
-        self.backward = dict()
 
     def load_hmm(self,
                  tran_prob,
@@ -64,8 +62,7 @@ class FirstOrderHMM:
             raise Exception("No hmm model!")
         forward_prob = [{}]
         for stat in self.states:
-            forward_prob[0][stat] = \
-                self.start_prob[stat] * self.emi_prob[stat][obs[0]]
+            forward_prob[0][stat] = self.start_prob[stat] * self.emi_prob[stat][obs[0]]
         for i in range(1, len(obs)):
             forward_prob.append({})
             for stat in self.states:
@@ -77,8 +74,7 @@ class FirstOrderHMM:
         forward_prob.append({})
         for stat in self.states:
             forward_prob[-1][stat] = forward_prob[-2][stat] * self.stop_prob[stat]
-        self.forward = forward_prob
-        return sum(forward_prob[-1].values())
+        return sum(forward_prob[-1].values()), forward_prob
 
     def viterbi_step(self, obs):
         if not self._has_model():
@@ -138,12 +134,81 @@ class FirstOrderHMM:
                     for back_s in self.states)
         backward_prob.append({})
         for stat in self.states:
-            backward_prob[-1][stat] = self.start_prob[stat] * self.emi_prob[stat][obs[0]]
-        self.backward = backward_prob
-        return sum(backward_prob[-1].values())
+            backward_prob[-1][stat] = (self.start_prob[stat] *
+                                       self.emi_prob[stat][obs[0]] *
+                                       backward_prob[-2][stat])
+        return sum(backward_prob[-1].values()), backward_prob
+
+    def baum_welch(self, obsvervations, train_round=500):
+        count = 0
+        for _ in range(train_round):
+            count += 1
+            print("# NO.{} round training --".format(count))
+            for obs in obsvervations:
+                pre_tran = []
+                pre_emi = []
+                new_tran_prob = {}
+                new_emi_prob = {}
+                likely_hood, forward = self.forward_step(obs=obs)
+                _, backward = self.backward_step(obs=obs)
+                backward.reverse()
+                for t in range(len(obs)):
+                    tmp_emi, tmp_tran = {}, {}
+                    for stat in self.states:
+                        tmp_emi[stat] = {
+                            "prob": np.divide(
+                                forward[t][stat] * backward[t][stat], likely_hood
+                            ),
+                            "obs": obs[t]
+                        }
+                    pre_emi.append(tmp_emi)
+
+                    for s_i in self.states:
+                        tmp_tran[s_i] = {}
+                        for s_j in self.states:
+                            tmp_tran[s_i][s_j] = np.divide(
+                                (forward[t][s_i] *
+                                 self.tran_prob[s_i][s_j] *
+                                 self.emi_prob[s_j][obs[t]] *
+                                 backward[t+1][s_j]), likely_hood
+                            )
+                    pre_tran.append(tmp_tran)
+                for s_i in self.states:
+                    new_tran_prob[s_i] = {}
+                    for s_j in self.states:
+                        new_tran_prob[s_i][s_j] = np.divide(
+                            sum([item[s_i][s_j] for item in pre_tran]),
+                            sum([sum(item[s_i].values()) for item in pre_tran])
+                        )
+                for stat in self.states:
+                    new_emi_prob[stat] = {}
+                    denominator = sum([item[stat]["prob"] for item in pre_emi])
+                    for o_i in obs:
+                        numerator = sum([item[stat]["prob"] for item in pre_emi
+                                         if item[stat]["obs"] == o_i])
+                        new_emi_prob[stat][o_i] = np.divide(numerator, denominator)
+            check_tran = self._is_convergence(new_prob=new_tran_prob,
+                                              old_prob=self.tran_prob)
+            check_emi = self._is_convergence(new_prob=new_emi_prob,
+                                             old_prob=self.emi_prob)
+            self.emi_prob = new_emi_prob
+            self.tran_prob = new_tran_prob
+            if check_tran and check_emi:
+                print("First order hmm trained completely!")
+                break
 
     def _has_model(self):
         if not self.tran_prob and not self.emi_prob:
             return False
         return True
+
+    @staticmethod
+    def _is_convergence(new_prob, old_prob):
+        for row, col_info in new_prob.items():
+            for col, value in col_info.items():
+                diff = abs(old_prob[row][col]-value)
+                if diff > 0.0001:
+                    return False
+        return True
+
 
